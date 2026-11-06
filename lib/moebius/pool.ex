@@ -10,6 +10,8 @@ defmodule Moebius.Pool do
 
   alias Moebius.{Connection, Error}
 
+  require Logger
+
   @defaults [
     pool_size: 10,
     checkout_timeout: 5_000,
@@ -30,7 +32,64 @@ defmodule Moebius.Pool do
     }
   end
 
+  # With notifications on, the pool and the listener sit under one supervisor, so the
+  # database is still a single child of the user's tree. They are independent, so
+  # one_for_one: a listener restart never touches the pool.
   def start_link(name, opts) do
+    warn_unknown(name, opts)
+
+    case Keyword.get(opts, :notifications, false) do
+      false ->
+        start_pool(name, opts)
+
+      _on ->
+        children = [
+          %{id: :pool, start: {__MODULE__, :start_pool, [name, opts]}, type: :supervisor},
+          {Moebius.Notifications, {name, opts}}
+        ]
+
+        # The listener handles outages itself and only crashes on a bug. A wider restart
+        # budget than the default 3 in 5s keeps such a bug from taking the pool down with it.
+        Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
+    end
+  end
+
+  @known [
+           :url,
+           :hostname,
+           :port,
+           :database,
+           :username,
+           :password,
+           :socket_dir,
+           :ssl,
+           :ssl_opts,
+           :connect_timeout,
+           :timeout,
+           :application_name,
+           :max_lifetime,
+           :pool_min,
+           :settings,
+           :notifications
+         ] ++ Keyword.keys(@defaults)
+
+  # A misspelled option (statment_timeout) would otherwise be dropped without a word, and
+  # the default silently used. Warn rather than raise, so an old config doesn't stop an app
+  # from booting.
+  defp warn_unknown(name, opts) do
+    case Keyword.keys(opts) -- @known do
+      [] ->
+        :ok
+
+      unknown ->
+        Logger.warning(
+          "#{inspect(name)} ignores unknown connection options: #{inspect(Enum.uniq(unknown))}"
+        )
+    end
+  end
+
+  @doc false
+  def start_pool(name, opts) do
     opts = Keyword.merge(@defaults, opts)
     # open every connection up front, so the first burst of traffic doesn't
     # wait on connection setup; pool_min below pool_size lets an idle pool shrink instead
@@ -167,7 +226,12 @@ defmodule Moebius.Pool do
   end
 
   @doc "Aborts the current transaction; `transaction/2` returns `{:error, value}`."
-  def rollback(value), do: throw({__MODULE__, :rollback, value})
+  def rollback(value) do
+    unless Enum.any?(Process.get_keys(), &match?({__MODULE__, :depth, _}, &1)),
+      do: raise(ArgumentError, "rollback/1 must be called inside transaction/1")
+
+    throw({__MODULE__, :rollback, value})
+  end
 
   defp top_level(conn, fun) do
     run_block(conn, fun, "begin", "commit", "rollback")

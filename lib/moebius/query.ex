@@ -353,9 +353,11 @@ defmodule Moebius.Query do
     vector = "to_tsvector(concat(#{concat_list}))"
     query = "websearch_to_tsquery($#{length(cmd.params) + 1})"
     cmd = Moebius.QueryFilter.append_condition(cmd, "#{vector} @@ #{query}", [term])
-    order = if cmd.order == "", do: " order by rank desc", else: cmd.order
+    rank = "ts_rank_cd(#{vector},#{query})"
+    # the expression, not the `rank` alias: select(cmd, cols) replaces the select list
+    order = if cmd.order == "", do: " order by #{rank} desc", else: cmd.order
 
-    %{cmd | order: order, select: "*, ts_rank_cd(#{vector},#{query}) as rank"}
+    %{cmd | order: order, select: "*, #{rank} as rank"}
   end
 
   @doc """

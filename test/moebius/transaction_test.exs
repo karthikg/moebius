@@ -5,8 +5,8 @@ defmodule Moebius.TransactionTest do
 
   setup do
     Moebius.TestData.reset_users!()
-    TestDb.run("drop table if exists monkies")
-    {:ok, _} = Moebius.DocumentQuery.db(:monkies) |> TestDb.save(%{name: "Setup"})
+    TestDb.run("drop table if exists transaction_docs")
+    {:ok, _} = Moebius.DocumentQuery.db(:transaction_docs) |> TestDb.save(%{name: "Setup"})
     :ok
   end
 
@@ -35,23 +35,23 @@ defmodule Moebius.TransactionTest do
 
   test "documents save within a transaction" do
     transaction(fn tx ->
-      {:ok, _} = Moebius.DocumentQuery.db(:monkies) |> TestDb.save(%{name: "Mike"}, tx)
-      {:ok, _} = Moebius.DocumentQuery.db(:monkies) |> TestDb.save(%{name: "Larry"}, tx)
+      {:ok, _} = Moebius.DocumentQuery.db(:transaction_docs) |> TestDb.save(%{name: "Mike"}, tx)
+      {:ok, _} = Moebius.DocumentQuery.db(:transaction_docs) |> TestDb.save(%{name: "Larry"}, tx)
     end)
 
-    assert {:ok, docs} = Moebius.DocumentQuery.db(:monkies) |> TestDb.run()
+    assert {:ok, docs} = Moebius.DocumentQuery.db(:transaction_docs) |> TestDb.run()
     assert docs |> Enum.map(& &1.name) |> Enum.sort() == ["Larry", "Mike", "Setup"]
   end
 
   test "documents don't save when there's an error within a transaction" do
     assert {:error, "relation \"no_such_table\" does not exist"} =
              transaction(fn tx ->
-               Moebius.DocumentQuery.db(:monkies) |> TestDb.save(%{name: "Mike"}, tx)
+               Moebius.DocumentQuery.db(:transaction_docs) |> TestDb.save(%{name: "Mike"}, tx)
                "select * from no_such_table" |> TestDb.run(tx)
-               Moebius.DocumentQuery.db(:monkies) |> TestDb.save(%{name: "Larry"}, tx)
+               Moebius.DocumentQuery.db(:transaction_docs) |> TestDb.save(%{name: "Larry"}, tx)
              end)
 
-    assert {:ok, [%{name: "Setup"}]} = Moebius.DocumentQuery.db(:monkies) |> TestDb.run()
+    assert {:ok, [%{name: "Setup"}]} = Moebius.DocumentQuery.db(:transaction_docs) |> TestDb.run()
   end
 
   describe "joining and nesting" do
@@ -120,6 +120,34 @@ defmodule Moebius.TransactionTest do
       {:error, _} = transaction(fn tx -> "select * from nope" |> run(tx) end)
 
       assert {:ok, [%{n: 1}]} = run("select 1 as n")
+      assert %{in_use_count: 0} = TestDb.pool_status()
+    end
+  end
+
+  describe "rollback/1" do
+    test "outside a transaction raises" do
+      assert_raise ArgumentError, ~r/inside transaction/, fn -> rollback(:nope) end
+    end
+
+    test "in a nested transaction rolls back only the savepoint" do
+      result =
+        transaction(fn tx ->
+          {:ok, _} = db(:users) |> insert(email: "outer@test.com") |> run(tx)
+
+          inner =
+            transaction(fn tx2 ->
+              {:ok, _} = db(:users) |> insert(email: "inner@test.com") |> run(tx2)
+              rollback(:inner_only)
+            end)
+
+          {:ok, _} = db(:users) |> insert(email: "after@test.com") |> run(tx)
+          inner
+        end)
+
+      assert result == {:error, :inner_only}
+
+      assert {:ok, rows} = db(:users) |> select("email") |> run()
+      assert Enum.sort(Enum.map(rows, & &1.email)) == ["after@test.com", "outer@test.com"]
       assert %{in_use_count: 0} = TestDb.pool_status()
     end
   end

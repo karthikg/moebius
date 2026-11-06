@@ -27,6 +27,7 @@ Moebius is *not* an ORM. There are no schemas, no mappings and no migrations; on
 - [Documents (JSONB)](#documents-jsonb)
 - [SQL files and functions](#sql-files-and-functions)
 - [Bulk loading](#bulk-loading), [streaming](#streaming-large-results), [transactions](#transactions), [EXPLAIN](#asking-postgres-how-it-will-run-a-query)
+- [Real-time events (LISTEN / NOTIFY)](#real-time-events-listen--notify)
 - [Types](#types), [errors](#errors) and [safety](#safety)
 - [Contributing](#contributing)
 
@@ -659,6 +660,82 @@ or use optimistic version checks. For stronger isolation, issue `SET TRANSACTION
 LEVEL SERIALIZABLE` before the transaction's first data query and retry the whole transaction
 on serialization failure. Acquire multiple row locks in a consistent order to reduce deadlocks.
 
+## Real-time events (LISTEN / NOTIFY)
+
+Postgres can push events to your processes. Turn it on for a database, and it keeps one extra
+connection open just for listening:
+
+```elixir
+children = [
+  {MyApp.Db, Moebius.get_connection() ++ [notifications: true]}
+]
+```
+
+Any process can listen. Anything can notify: your code, another node, or a trigger in the
+database.
+
+```elixir
+{:ok, ref} = MyApp.Db.listen("orders")
+
+MyApp.Db.notify("orders", %{id: 42, status: "paid"})   # maps and lists are sent as JSON
+
+receive do
+  {:moebius_notification, ^ref, "orders", payload} -> Jason.decode!(payload)
+end
+```
+
+A notification sent inside a transaction arrives when the transaction commits, and never if
+it rolls back. So "the order was paid" is only announced once it really was.
+
+A LiveView that shows orders as they change:
+
+```elixir
+def mount(_params, _session, socket) do
+  # {:ok, ref} or, mid-outage, {:eventually, ref}: either way the subscription is kept
+  if connected?(socket), do: MyApp.Db.listen("orders")
+  {:ok, assign(socket, orders: load_orders())}
+end
+
+def handle_info({:moebius_notification, _ref, "orders", _payload}, socket),
+  do: {:noreply, assign(socket, orders: load_orders())}
+
+# the listening connection dropped and came back: events may have been missed, so reload
+def handle_info({:moebius_listener, _ref, :connected}, socket),
+  do: {:noreply, assign(socket, orders: load_orders())}
+
+def handle_info({:moebius_listener, _ref, :disconnected}, socket), do: {:noreply, socket}
+```
+
+Or let the database announce its own changes with a trigger:
+
+```sql
+create or replace function notify_order_change() returns trigger as $$
+begin
+  perform pg_notify('orders', json_build_object('op', tg_op, 'id', new.id)::text);
+  return new;
+end $$ language plpgsql;
+
+create trigger orders_notify after insert or update on orders
+  for each row execute function notify_order_change();
+```
+
+What you can count on:
+
+- **`{:ok, ref}` means it's live.** Once `listen/1` returns `{:ok, ref}`, every notification
+  committed afterwards reaches you. So listen first, then load the current state, and no event
+  falls in between. While the connection is down you get `{:eventually, ref}` instead, then
+  `{:moebius_listener, ref, :connected}` when it's live.
+- **Outages are survivable.** If the connection is lost (a restart, a failover, a network
+  that silently drops it), every listener gets `:disconnected`. Moebius reconnects with backoff,
+  listens on every channel again, and sends `:connected`. A heartbeat catches connections
+  that die without closing. The pool, and everything else in your tree, keeps running.
+- **Cleanup is automatic.** A listener that exits is removed. When the last one leaves a
+  channel, Moebius stops listening on it.
+
+Payloads are limited to about 8,000 bytes by Postgres. Send an id and read the row. The
+options (`:heartbeat`, `:timeout`, `:backoff_min`, `:backoff_max`) are listed in
+`Moebius.Notifications`.
+
 ## Asking Postgres how it will run a query
 
 `explain/2` returns the plan as text. It's the fastest way to find out whether a query uses your indexes:
@@ -753,6 +830,8 @@ mix quality
 ```
 
 The repo includes [Claude Code](https://claude.com/claude-code) skills in `.claude/skills/` (`erlang-otp`, `postgres-sql`, `elixir-testing` and `supabase-postgres-best-practices`). They're the rules the 5.0 code was held to, and they're a good read even if you don't use an AI assistant.
+
+Everyone taking part is expected to follow the [code of conduct](CODE_OF_CONDUCT.md).
 
 Found a security problem? Please report it privately; see [SECURITY.md](SECURITY.md).
 

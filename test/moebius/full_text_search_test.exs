@@ -20,7 +20,10 @@ defmodule Moebius.FullTextSearchTest do
     cmd = db(:users) |> search(for: "Mike", in: [:first, :last]) |> select()
 
     assert cmd.sql =~ "to_tsvector(concat(first, ' ',  last)) @@ websearch_to_tsquery($1)"
-    assert cmd.sql =~ "order by rank desc"
+
+    assert cmd.sql =~
+             "order by ts_rank_cd(to_tsvector(concat(first, ' ',  last)),websearch_to_tsquery($1)) desc"
+
     assert cmd.params == ["Mike"]
   end
 
@@ -59,5 +62,29 @@ defmodule Moebius.FullTextSearchTest do
 
     assert id == mike.id
     assert is_float(rank) and rank > 0
+  end
+
+  describe "search/2 with select/2" do
+    test "orders by the rank expression, so explicit columns still work" do
+      cmd = db(:users) |> search(for: "Mike", in: [:first]) |> select("id, email")
+
+      assert cmd.sql ==
+               "select id, email from users where to_tsvector(concat(first)) @@ " <>
+                 "websearch_to_tsquery($1) order by " <>
+                 "ts_rank_cd(to_tsvector(concat(first)),websearch_to_tsquery($1)) desc;"
+
+      assert cmd.params == ["Mike"]
+    end
+
+    test "runs with explicit columns", %{mike: mike} do
+      assert {:ok, [%{id: id, email: "mike.smith@test.com"} = row]} =
+               db(:users)
+               |> search(for: "Mike", in: [:first])
+               |> select("id, email")
+               |> TestDb.run()
+
+      assert id == mike.id
+      refute Map.has_key?(row, :rank)
+    end
   end
 end

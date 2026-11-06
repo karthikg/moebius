@@ -77,7 +77,7 @@ defmodule Moebius.DocumentQuery do
   ```
   """
   def contains(%DocumentCommand{} = cmd, criteria) do
-    %{cmd | where: " where #{cmd.json_field} @> $1", params: [Map.new(criteria)]}
+    set_where(cmd, " where #{cmd.json_field} @> $1", [Map.new(criteria)])
   end
 
   @doc """
@@ -99,8 +99,7 @@ defmodule Moebius.DocumentQuery do
         true -> [params]
       end
 
-    where = " where #{criteria}"
-    %{cmd | where: where, params: param_list}
+    set_where(cmd, " where #{criteria}", param_list)
   end
 
   @doc """
@@ -122,8 +121,11 @@ defmodule Moebius.DocumentQuery do
         true -> [params]
       end
 
-    where = " where body -> #{Identifier.json_key(field)} #{operator!(operator)} $1"
-    %{cmd | where: where, params: param_list}
+    set_where(
+      cmd,
+      " where body -> #{Identifier.json_key(field)} #{operator!(operator)} $1",
+      param_list
+    )
   end
 
   @doc """
@@ -145,8 +147,7 @@ defmodule Moebius.DocumentQuery do
         true -> [params]
       end
 
-    where = " where body -> #{Identifier.json_key(field)} ? $1"
-    %{cmd | where: where, params: param_list}
+    set_where(cmd, " where body -> #{Identifier.json_key(field)} ? $1", param_list)
   end
 
   @doc """
@@ -326,8 +327,17 @@ defmodule Moebius.DocumentQuery do
         do: " order by ts_rank_cd(#{vector},#{query}) desc",
         else: cmd.order
 
-    %{cmd | order: order}
+    %{cmd | order: order, searched?: true}
   end
+
+  # A predicate replaces the where clause and its params, which would drop the search's
+  # condition and leave its $n in ORDER BY pointing at nothing.
+  defp set_where(%DocumentCommand{searched?: true}, _where, _params) do
+    raise ArgumentError,
+          "contains/2, filter/3, filter/4 and exists/3 must come before search/2 in a pipeline"
+  end
+
+  defp set_where(cmd, where, params), do: %{cmd | where: where, params: params}
 
   defp delete_command(%DocumentCommand{} = cmd, id) do
     sql =

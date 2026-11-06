@@ -91,7 +91,6 @@ db(:users)                          %QueryCommand{table_name: "users"}
 
 **Backlog (known limits, pick by need)**
 - `search/2` uses `to_tsquery`, which errors on plain user input ("red shoes"); `websearch_to_tsquery` is kinder but changes semantics, so it's a major or opt-in change.
-- LISTEN/NOTIFY: not exposed; epgsql supports it on a dedicated connection.
 - Typespecs on the public builder API (none yet).
 - Opt-in prepared-statement cache (one round-trip per repeated query instead of two).
 - `bulk_insert` is ~24% slower than on Postgrex; steer big loads to `copy/3` (4.6× faster).

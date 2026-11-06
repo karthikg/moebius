@@ -37,6 +37,8 @@ defmodule Moebius.Database do
     limits; the driver does not impose a separate deadline for an unresponsive network.
   * `:settings` - any other Postgres settings, as a keyword list.
   * `:application_name` - shown in `pg_stat_activity` (default `"moebius"`).
+  * `:notifications` - `true` (or a keyword list of options) to start a `LISTEN` connection
+    next to the pool, so `listen/1` works. Off by default. See `Moebius.Notifications`.
   """
 
   alias Moebius.{Connection, DocumentQuery, Error, Pool, Query, Transformer}
@@ -209,6 +211,34 @@ defmodule Moebius.Database do
 
       @doc "Rolls back the current transaction, which then returns `{:error, value}`."
       defdelegate rollback(value), to: Moebius.Pool
+
+      # ---- LISTEN / NOTIFY ----
+
+      @doc """
+      Listens on a Postgres channel. The calling process receives
+      `{:moebius_notification, ref, channel, payload}` for every `NOTIFY` on it, until it
+      calls `unlisten/1` or exits.
+
+      Returns `{:ok, ref}` once `LISTEN` is active, `{:eventually, ref}` while the listening
+      connection is reconnecting, or `{:error, message}` when this database wasn't started
+      with `notifications: true`. See `Moebius.Notifications`.
+      """
+      def listen(channel), do: Moebius.Notifications.listen(@name, channel)
+
+      @doc "Stops a subscription `listen/1` started. Always returns `:ok`."
+      def unlisten(ref), do: Moebius.Notifications.unlisten(@name, ref)
+
+      @doc """
+      Sends a notification on a channel. `payload` is a string, or a map or list sent as JSON.
+
+      Inside a transaction it is delivered when the transaction commits, and dropped if it
+      rolls back. Doesn't need `notifications: true`; any connection can notify.
+      """
+      def notify(channel, payload \\ "") do
+        {sql, params} = Moebius.Notifications.notify_command(channel, payload)
+
+        with {:ok, _} <- run(sql, params), do: :ok
+      end
 
       # ---- documents ----
 

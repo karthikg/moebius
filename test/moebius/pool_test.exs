@@ -231,4 +231,31 @@ defmodule Moebius.PoolTest do
         result
     end
   end
+
+  describe "options" do
+    defmodule TypoDb do
+      @moduledoc false
+      use Moebius.Database
+    end
+
+    test "an unknown option is named in a warning, and the pool still starts" do
+      log =
+        capture_log(fn ->
+          start_supervised!(
+            {TypoDb, Moebius.get_connection() ++ [pool_size: 1, statment_timeout: "10min"]}
+          )
+        end)
+
+      assert log =~ "ignores unknown connection options: [:statment_timeout]"
+      assert {:ok, [%{n: 1}]} = TypoDb.run("select 1 as n")
+    end
+
+    test "known options log nothing" do
+      assert capture_log(fn ->
+               start_supervised!(
+                 {TypoDb, Moebius.get_connection() ++ [pool_size: 1, statement_timeout: "10min"]}
+               )
+             end) == ""
+    end
+  end
 end

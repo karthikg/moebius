@@ -45,10 +45,16 @@
   "lib/moebius/error.ex": [
     "Record"
   ],
+  "lib/moebius/notifications.ex": [
+    "GenServer",
+    "Logger",
+    "Moebius."
+  ],
   "lib/moebius/params.ex": [
     "Moebius.Error"
   ],
   "lib/moebius/pool.ex": [
+    "Logger",
     "Moebius."
   ],
   "lib/moebius/query.ex": [
@@ -123,6 +129,12 @@
   "test/moebius/join_test.exs": [
     "ExUnit.Case",
     "Moebius.Query"
+  ],
+  "test/moebius/notifications_test.exs": [
+    "ExUnit.CaptureLog",
+    "ExUnit.Case",
+    "Moebius.Database",
+    "Moebius.Notifications"
   ],
   "test/moebius/pool_test.exs": [
     "ExUnit.CaptureLog",
