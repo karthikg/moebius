@@ -1,84 +1,100 @@
 # Moebius: Project Brief
 
-**What it is.** Moebius is a small Elixir library (about 1,800 lines in `lib/`) for querying PostgreSQL in a functional, pipe-first style. It is not an ORM: there are no schemas, no migrations and no mapping. It builds SQL strings, runs them through epgsql (the Erlang Postgres driver) with a pooler connection pool, and returns plain maps. It has two ways to query:
+## What it is
 
-1. **Relational**, `Moebius.Query`: `db(:users) |> filter(...) |> sort(...) |> limit(...)`, plus insert, update, delete, bulk_insert, join, count, group, reduce, full-text `search`, `sql_file` and `function`.
-2. **Document store**, `Moebius.DocumentQuery`: stores maps in a `jsonb` column called `body`. It creates the table and GIN indexes the first time you save, and it can keep a `tsvector` column up to date for full-text search.
+A pipe-first query library for Elixir and PostgreSQL. It's about 3,400 lines in `lib/` (docs included), MIT-licensed, and v5.0.1 is on Hex. It is **not an ORM**: no schemas, no migrations, no structs for your data. Builders produce SQL plus parameters, a database module runs them, and results come back as plain maps.
 
-Status: v4.2.0 on Hex (2024-10-23). 5.0.0, the epgsql release, is on the `epgsql-driver` branch; see `CHANGELOG.md`. It is MIT-licensed; the maintainers are Rob Conery and Chase Pursley.
+- **Origin:** a 2015 port of MassiveJS by Rob Conery (maintainers: Rob Conery, Chase Pursley).
+- **History:** most commits are from 2015–2017. A 4.x refresh landed in 2024, and the 5.0 rewrite of the driver layer in Sept–Oct 2026.
+- **This checkout:** `karthikg/moebius`, a fork of `robconery/moebius`; the default branch is `master`.
 
----
+Two ways to query:
+
+| | Module | Struct | Stores |
+|---|---|---|---|
+| Relational | `Moebius.Query` | `%QueryCommand{}` | ordinary tables |
+| Documents | `Moebius.DocumentQuery` | `%DocumentCommand{}` | maps in a `jsonb` `body` column; table + GIN indexes created on first save; optional `tsvector` search column |
+
+Postgres features exposed directly: JSONB, full-text search, binary `COPY` (`copy/3`), cursor streams (`stream/2`), savepoint-nested transactions, `EXPLAIN` (`explain/2`), SQL files (`sql_file`) and stored functions (`function`).
 
 ## How it works
 
 ```
-db(:table)                     → %QueryCommand{table_name: "table"}     (or %DocumentCommand{})
-  |> filter/sort/limit/...     → fills in the where/order/limit/params fields
-  |> insert/update/delete/...  → writes cmd.sql itself and sets cmd.type
-  |> MyDb.run | first | find   → (if sql is nil, select() builds the SELECT)
-                               → Moebius.Database.execute → Pool.checkout → Connection.query
-                                   (parse, check params against the parsed types, bind + execute)
-                               → Moebius.Transformer.to_list | to_single | from_json → maps
+db(:users)                          %QueryCommand{table_name: "users"}
+  |> filter / sort / limit / join   fill where / order / params  (pure; no I/O)
+  |> insert / update / delete       write cmd.sql, set cmd.type
+  |> MyDb.run | first | find        select() builds SQL if none yet
+     → Moebius.Database.execute
+     → Moebius.Pool.checkout        pooler; connection pinned to the process while held
+     → Moebius.Connection.query     epgsql parse → Moebius.Params.check → bind + execute
+     → Moebius.Transformer          %Moebius.Result{} → maps (to_list / to_single / from_json)
 ```
 
-- **Builders do no I/O.** Each one takes a struct and returns a new one, so you can check `cmd.sql` and `cmd.params` directly. Most tests do exactly that.
-- **`use Moebius.Database`** (`database.ex`, a `__using__` macro) turns a module into a database with its own pooler pool, started as one supervisor child in the user's tree. It adds `run/1,2,3`, `first/1`, `find/2`, `save/2,3`, `transaction/1`, `rollback/1`, `stream/2`, `explain/2`, `copy/3`, `run_batch/1`, `transact_batch/1`, `pool_status/0` and `create_document_table/1,2`. `Moebius.Db` is the built-in module of this kind. Tests use `TestDb` (`test/support/`).
-- **The driver layer** (all `@moduledoc false` except `Moebius.Connection`, `Moebius.Error` and `Moebius.Result`):
-  - `pool.ex`: pooler config, checkout/return, transactions (savepoints when nested), cursor streams. A process that holds a connection reuses it for every query on the same pool, which is how plain `run/1` joins an open transaction.
-  - `connection.ex`: epgsql connect options, `query/3` (parse → `Moebius.Params.check` → `prepared_query`), `script/2` for multi-statement SQL, and the "broken connection" flag that makes the pool replace a member.
-  - `params.ex`: checks every parameter against the type Postgres parsed, because epgsql encodes inside the connection process and a wrong type would crash it.
-  - `codec/`: epgsql codecs for date/time/timestamp(tz) (Elixir structs, exact microseconds), numeric (`Decimal`) and JSON (Jason).
-  - `copy.ex`: `copy/3`, binary `COPY FROM STDIN` in chunks from any Enumerable.
-  - `identifier.ex`: checks every table/column/function/file name before it goes into SQL.
-- **Connection** settings come from `config :moebius, connection: [...]` (either a keyword list or `url:`) and go through `Moebius.get_connection/0`. Explicit options win over the parts of the url.
-- **Transactions**: `MyDb.transaction(fn tx -> cmd |> MyDb.run(tx) end)`. A failed statement inside raises `Moebius.Error`; `Pool.transaction` rolls back and returns `{:error, message}`. Other exceptions roll back and are re-raised.
-- **Mix tasks**: `moebius.create`, `moebius.drop`, `moebius.migrate` and `moebius.seed`, all through `Moebius.run_script/2` (epgsql's simple protocol runs multi-statement scripts; no `psql` needed). Migrate and seed only run in the test env. The aliases are `moebius.setup` and `moebius.reset`.
+- **`use Moebius.Database`** (`lib/moebius/database.ex`) turns a module into a database with its own pool, which you start as one child in *your* supervision tree. It adds `run/first/find/save/transaction/rollback/stream/explain/copy/run_batch/transact_batch/pool_status/create_document_table`. `Moebius.Db` is the built-in one; tests use `TestDb`.
+- **Safety:**
+  - Every table/column/function/file name goes through `Moebius.Identifier`, and every value is a `$n` parameter.
+  - `Params.check` validates each value against the type Postgres parsed, because a bad value crashes an epgsql connection process.
+- **Transactions:** `MyDb.transaction(fn tx -> ... end)`. Nested calls become savepoints. A failed statement rolls back and returns `{:error, message}`; other exceptions roll back and re-raise.
+- **Types:** `lib/moebius/codec/` handles date/time/timestamp(tz) as Elixir structs (exact µs), numeric as `Decimal`, and JSON via Jason.
+- **Config:** `config :moebius, connection: [url: ... | host:, database:, ...]`, read by `Moebius.get_connection/0`. Explicit options win over the parts of a url.
+- **Mix tasks:** `moebius.create|drop|migrate|seed` (aliases `moebius.setup`, `moebius.reset`) run through `Moebius.run_script/2`, so no `psql` is needed. migrate/seed are test-env only.
 
-Navigation: `.codemap/MAP.md` lists what each directory holds, and `.codemap/recipes.md` lists which files to change for each kind of task.
+### Layout
 
----
-
-## Current state (after phase 2, 2026-09-30)
-
-Toolchain: Elixir 1.20.4 / OTP 29.0.5 (`.tool-versions`). Postgres 17.4 locally. `elixir: "~> 1.15"` is unchanged for library users.
-
-| Check | Result |
+| Path | Holds |
 |---|---|
-| `mix compile --warnings-as-errors` | ✅ clean in dev and test |
-| `mix test` | ✅ **209 passed** (9 doctests), no log noise; stable over 25+ runs with random seeds |
-| `mix quality --strict` | ✅ format, sobelow (0 findings, fails on any), credo all clean |
-| `mix hex.audit` | ✅ no advisories |
+| `lib/moebius.ex` | `Moebius` (connection config, `run_script`), `Moebius.Db` |
+| `lib/moebius/query.ex`, `query_filter.ex` | relational builders, where clauses |
+| `lib/moebius/document_query.ex` | JSONB builders |
+| `lib/moebius/database.ex` | the `use` macro, `execute` |
+| `lib/moebius/pool.ex`, `connection.ex`, `params.ex`, `copy.ex`, `codec/` | driver layer |
+| `lib/moebius/identifier.ex`, `transformer.ex` | name checks, result → maps |
+| `lib/mix/tasks/` | mix tasks |
+| `test/moebius/` (25 files, 268 tests + 9 doctests), `test/db/*.sql`, `test/support/` | tests, schema/seeds, `TestDb` |
+| `.codemap/` | MAP / symbols / recipes / glossary; read `MAP.md` first |
+| `.claude/` | project skills (postgres-sql, erlang-otp, elixir-testing, FTS), `elixir-reviewer` agent, git commands, format hook |
 
-| Runtime dep | Locked | Note |
-|---|---|---|
-| epgsql | 4.8.0 | no deps |
-| pooler | 1.7.0 | no deps |
-| jason | 1.4.5 | |
-| decimal | 3.1.1 | CVE-2026-32686 fixed |
+## Current state (2026-11-05)
 
-See `plan.md` for the phase 1 and phase 2 task logs.
-
----
-
-## Known limits (not bugs, but worth knowing)
-
-- Column names and document keys become atoms (`String.to_atom`). That's the public API, and it's safe only because they are a bounded set. Documented in `Moebius.Transformer`.
-- `search/2` uses `to_tsquery`, which raises a syntax error on ordinary user input ("red shoes"). `websearch_to_tsquery` would be kinder; changing it changes search semantics, so it's left for a later release.
-- `bulk_insert` (multi-row `VALUES`) is about 24% slower than on Postgrex, because epgsql copies each 20,000-parameter message to the connection process. `copy/3` is the fast path (4.6x faster than 4.x's bulk_insert).
-- Under heavy concurrency (50 processes on a 10-connection pool) throughput is about 12% below Postgrex: epgsql encodes and decodes in the connection process. Single queries are 5-11% faster at the median and 10-42% faster at p99.
-- LISTEN/NOTIFY isn't exposed. epgsql supports it through a dedicated connection.
-- The public builder API has no typespecs yet.
-
----
+| Check | State |
+|---|---|
+| Version | `5.0.1` in `mix.exs` and on Hex. `CHANGELOG.md` "Unreleased" has `ignore_conflict` (feature) and the `search` + sort/limit/offset fix |
+| Driver | epgsql 4.8.0 + pooler 1.7.0 (both stable, no deps); Postgrex removed in 5.0 |
+| Deps | ✅ all current (2026-11-05: decimal 3.1.1 → 3.2.0, sobelow 0.15.0 → 0.18.1; lock-only, within existing `~>` ranges) |
+| Security | ✅ `mix hex.audit` clean. CVE-2026-97853 (MEDIUM, DoS via `Decimal.round/3`, fixed in decimal 3.1.2) is fixed in our lock by decimal 3.2.0. Moebius never calls `Decimal.round`. A library's lock doesn't reach users, but `{:decimal, "~> 3.0"}` still lets an app keep 3.1.1 in *its* lock. (The 3 Postgrex-era CVEs are closed.) |
+| Pinned toolchain | `.tool-versions`: Erlang 29.0.5 / Elixir 1.20.4; CI uses the same file |
+| Local loop | ✅ Phase 3 done 2026-11-05: Postgres 17.11 (brew service), pinned toolchain via mise. **277 passed** (268 tests + 9 doctests) on both 1.20.4/OTP 29 and 1.18.4/OTP 27; `compile --warnings-as-errors` and `mix quality --strict` clean |
+| Git | **no tags** (`v5.0.0`/`v5.0.1` missing; ExDoc `source_ref: "v#{@version}"` links break); no CI runs visible on the fork |
+| Links | `mix.exs` `source_url`/`links` and the README badges point at `robconery/moebius`, not the fork |
 
 ## Upgrade plan
 
-**Phase 1: build on current tooling.** ✅ Done (see `plan.md`).
+**Done:**
+- **Phase 1:** builds on current tooling (see `plan.md`).
+- **Phase 2:** Postgrex → epgsql + pooler, defect fixes, tests 104 → 209 (see `plan.md`, `CHANGELOG.md`).
 
-**Phase 2: replace Postgrex with epgsql + pooler, fix the known defects.** ✅ Done on `epgsql-driver` (see `plan.md` and `CHANGELOG.md`).
+**Phase 3: working local loop** ✅ Done 2026-11-05
+1. `brew install mise postgresql@17`; `mise install` (prebuilt Erlang 29.0.5 + Elixir 1.20.4, ~15s); `mise exec -- mix local.hex --force && mise exec -- mix local.rebar --force`.
+2. `brew services start postgresql@17` (starts at login); `create role postgres login superuser password 'postgres'`; `MIX_ENV=test mix moebius.create`.
+3. Baseline: 277 passed, compile/quality clean. Run with `mise exec -- mix ...`, or add `eval "$(mise activate zsh)"` to `~/.zshrc` so `.tool-versions` applies automatically.
 
-**Next**
-1. Release 5.0.0: tag `v5.0.0` (ex_doc `source_ref` depends on it) and `mix hex.publish`.
-2. Pick from the known limits above: `websearch_to_tsquery`, LISTEN/NOTIFY, typespecs, an opt-in prepared-statement cache (one round-trip per repeated query instead of two).
+**Phase 4: housekeeping**
 
-Verify with `MIX_ENV=test mix moebius.migrate && MIX_ENV=test mix moebius.seed && mix test && mix quality --strict`.
+4. ✅ Deps: `mix deps.update decimal sobelow` done 2026-11-05 (audit clean, 277 passed over 4 seeds, quality clean; sobelow 0.18 added no findings). Open: raising the requirement to `{:decimal, "~> 3.1 and >= 3.1.2"}` would stop apps resolving the vulnerable version; that changes `mix.exs`, so decide before 5.1.0.
+5. Decide whose repo this is. If the fork is the home, point `source_url`, `links` and the README badges at `karthikg/moebius`; if not, upstream the work to `robconery/moebius`.
+6. CI: confirm Actions are enabled on the fork, push, and check the workflow (`.github/workflows/elixir.yml`) passes on the pinned toolchain.
+7. Tags: tag `v5.0.1` at `08395c0`, and `v5.0.0` at `e0c3446` (the last commit before the 5.0.1 bump; check it against the Hex tarball first), so doc source links resolve.
+
+**Phase 5: release 5.1.0**
+
+8. Move "Unreleased" in `CHANGELOG.md` to `5.1.0` (minor: `ignore_conflict` is new API), bump `@version`, tag `v5.1.0`, `mix hex.publish` (needs Hex owner rights).
+
+**Backlog (known limits, pick by need)**
+- `search/2` uses `to_tsquery`, which errors on plain user input ("red shoes"); `websearch_to_tsquery` is kinder but changes semantics, so it's a major or opt-in change.
+- LISTEN/NOTIFY: not exposed; epgsql supports it on a dedicated connection.
+- Typespecs on the public builder API (none yet).
+- Opt-in prepared-statement cache (one round-trip per repeated query instead of two).
+- `bulk_insert` is ~24% slower than on Postgrex; steer big loads to `copy/3` (4.6× faster).
+- Column names/document keys become atoms (bounded set; documented).
+
+After each change: `python3 ~/.claude/skills/codemap/scripts/index.py refresh --root .`.

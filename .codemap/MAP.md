@@ -3,7 +3,7 @@
 > Read this FIRST. Directory → purpose. Drill into an area only when needed.
 > Fill `TODO` purposes via a single batched pass; they survive rebuilds.
 
-- `.` (16 files: 8.md, 4·, 2.exs, 1.json, 1.lock) — mix.exs (deps, version), README (full API docs by example), .formatter.exs, .tool-versions
+- `.` (17 files: 9.md, 4·, 2.exs, 1.json, 1.lock) — mix.exs (deps, version), README (full API docs by example), .formatter.exs, .tool-versions
 - `.claude` (1 files: 1.json) — Claude Code project config: settings.json registers a PostToolUse hook that runs hooks/mix-format.sh after Edit/Write
 - `.claude/agents` (1 files: 1.md) — Subagent: elixir-reviewer (read-only Elixir/OTP reviewer; reports findings, never edits)
 - `.claude/commands` (4 files: 4.md) — Slash commands: git-commit (Conventional Commits), git-issue (gh issue create), git-merge (safe merge to main), git-remote (create and polish the GitHub remote)
