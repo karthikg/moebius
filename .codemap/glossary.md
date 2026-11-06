@@ -17,6 +17,7 @@
 - **TestDb** — the test suite's DB module, `test/support/test_db.ex`; **Moebius.TestData** — shared test setup, `test/support/test_data.ex`
 - **CommandBatch / transact_batch** — list of commands run together, optionally in one transaction. `database.ex`
 - **bulk_insert** — multi-row insert chunked at 20,000 params per command. `query.ex` `bulk_insert/2`
+- **ignore_conflict** — pipe after `insert/2` or `bulk_insert/2` to add `ON CONFLICT DO NOTHING` (optionally on given columns); a skipped `insert` returns `{:ok, nil}`. `query.ex` `ignore_conflict/2`
 - **sql_file** — run a `.sql` file from the `:scripts` config dir by name. `query.ex`
 - **run_script** — run a multi-statement SQL string on its own connection (mix tasks). `lib/moebius.ex`
 - **function / function_command** — call a Postgres stored function. `query.ex`

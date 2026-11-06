@@ -1,1 +1,178 @@
-{}
+{
+  "config/config.exs": [
+    "Config"
+  ],
+  "config/prod.exs": [
+    "Config"
+  ],
+  "config/test.exs": [
+    "Config"
+  ],
+  "lib/mix/tasks/moebius.create.ex": [
+    "Mix.Task",
+    "Mix.Tasks.Moebius.Helpers"
+  ],
+  "lib/mix/tasks/moebius.drop.ex": [
+    "Mix.Task",
+    "Mix.Tasks.Moebius.Helpers"
+  ],
+  "lib/mix/tasks/moebius.migrate.ex": [
+    "Mix.Task",
+    "Mix.Tasks.Moebius.Helpers"
+  ],
+  "lib/mix/tasks/moebius.seed.ex": [
+    "Mix.Task",
+    "Mix.Tasks.Moebius.Helpers"
+  ],
+  "lib/moebius.ex": [
+    "Moebius.Database"
+  ],
+  "lib/moebius/connection.ex": [
+    "Moebius.",
+    "Record"
+  ],
+  "lib/moebius/copy.ex": [
+    "Moebius.",
+    "Record"
+  ],
+  "lib/moebius/database.ex": [
+    "Moebius."
+  ],
+  "lib/moebius/document_query.ex": [
+    "Moebius.DocumentCommand",
+    "Moebius.Identifier"
+  ],
+  "lib/moebius/error.ex": [
+    "Record"
+  ],
+  "lib/moebius/params.ex": [
+    "Moebius.Error"
+  ],
+  "lib/moebius/pool.ex": [
+    "Moebius."
+  ],
+  "lib/moebius/query.ex": [
+    "Moebius.CommandBatch",
+    "Moebius.Identifier",
+    "Moebius.QueryCommand",
+    "Moebius.QueryFilter"
+  ],
+  "lib/moebius/query_filter.ex": [
+    "Moebius.Identifier"
+  ],
+  "lib/moebius/transformer.ex": [
+    "Moebius."
+  ],
+  "mix.exs": [
+    "Mix.Project"
+  ],
+  "test/moebius/aggregate_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/moebius/basic_select_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query",
+    "TestDb"
+  ],
+  "test/moebius/bulk_insert_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/moebius/connection_url_test.exs": [
+    "ExUnit.Case"
+  ],
+  "test/moebius/copy_test.exs": [
+    "ExUnit.CaptureLog",
+    "ExUnit.Case",
+    "Moebius.Database",
+    "Moebius.Query"
+  ],
+  "test/moebius/date_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/moebius/delete_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/moebius/document_test.exs": [
+    "ExUnit.Case",
+    "Moebius.DocumentQuery"
+  ],
+  "test/moebius/explain_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/moebius/filter_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/moebius/full_text_search_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/moebius/function_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/moebius/insert_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/moebius/join_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/moebius/pool_test.exs": [
+    "ExUnit.CaptureLog",
+    "ExUnit.Case",
+    "Moebius.Database",
+    "Moebius.Query"
+  ],
+  "test/moebius/query_filter_test.exs": [
+    "ExUnit.Case",
+    "Moebius.QueryFilter"
+  ],
+  "test/moebius/query_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/moebius/reported_issues_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/moebius/safety_regression_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Database",
+    "Moebius.DocumentQuery",
+    "Moebius.Query"
+  ],
+  "test/moebius/security_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/moebius/sql_file_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/moebius/stream_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/moebius/transaction_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query",
+    "TestDb"
+  ],
+  "test/moebius/types_test.exs": [
+    "ExUnit.Case"
+  ],
+  "test/moebius/update_test.exs": [
+    "ExUnit.Case",
+    "Moebius.Query"
+  ],
+  "test/support/test_db.ex": [
+    "Moebius.Database"
+  ]
+}
