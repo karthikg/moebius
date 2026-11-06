@@ -4,6 +4,14 @@
 
 ### Added
 
+- **LISTEN / NOTIFY.** Start a database with `notifications: true`, then `listen/1`,
+  `unlisten/1` and `notify/2` (string, map or list payloads; maps and lists go as JSON).
+  `{:ok, ref}` means `LISTEN` is already active, so nothing sent after it is missed. The
+  listening connection has a heartbeat, reconnects with jittered backoff, listens on every
+  channel again, and tells listeners `:disconnected` / `:connected` so they can reload state.
+  A listener that exits is removed, and the last one leaving a channel unlistens it. The pool
+  and listener sit under one supervisor, still one child of your tree. See
+  `Moebius.Notifications`.
 - `Moebius.Query.ignore_conflict/1,2` adds `on conflict [(cols)] do nothing` to `insert/2`
   and `bulk_insert/2`. A skipped single insert returns `{:ok, nil}`. (#120)
 

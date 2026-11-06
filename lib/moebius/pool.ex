@@ -30,7 +30,26 @@ defmodule Moebius.Pool do
     }
   end
 
+  # With notifications on, the pool and the listener sit under one supervisor, so the
+  # database is still a single child of the user's tree. They are independent, so
+  # one_for_one: a listener restart never touches the pool.
   def start_link(name, opts) do
+    case Keyword.get(opts, :notifications, false) do
+      false ->
+        start_pool(name, opts)
+
+      _on ->
+        children = [
+          %{id: :pool, start: {__MODULE__, :start_pool, [name, opts]}, type: :supervisor},
+          {Moebius.Notifications, {name, opts}}
+        ]
+
+        Supervisor.start_link(children, strategy: :one_for_one)
+    end
+  end
+
+  @doc false
+  def start_pool(name, opts) do
     opts = Keyword.merge(@defaults, opts)
     # open every connection up front, so the first burst of traffic doesn't
     # wait on connection setup; pool_min below pool_size lets an idle pool shrink instead
