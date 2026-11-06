@@ -16,6 +16,12 @@
   column instead of `body -> 'id'`, so `search |> sort(:id, :desc) |> first` returns the newest
   match (#98).
 
+### Security
+
+- Dev/CI lock moves decimal 3.1.1 → 3.2.0 (CVE-2026-97853, unbounded allocation in
+  `Decimal.round/3`; Moebius doesn't call it). Apps using Moebius should run
+  `mix deps.update decimal`. sobelow 0.15.0 → 0.18.1 (dev/test only).
+
 ## 5.0.1
 
 ### Fixed
