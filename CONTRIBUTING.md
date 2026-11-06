@@ -23,7 +23,8 @@ CI runs these, so it's quicker to run them first:
 ```sh
 mix compile --warnings-as-errors
 mix test
-mix test --repeat-until-failure 10   # catches tests that depend on order or timing
+mix test --seed 0                    # a fixed order, then CI's random one
+mix test --repeat-until-failure 20   # catches tests that depend on order or timing
 mix quality --strict                 # format check, sobelow and credo
 ```
 
@@ -48,12 +49,21 @@ The core modules, all in `lib/moebius/`:
 | `document_query.ex` | the JSONB document builder |
 | `database.ex` | `use Moebius.Database`: run, first, find, save, transaction, stream, explain, copy |
 | `pool.ex`, `connection.ex`, `copy.ex`, `params.ex`, `codec/` | the driver layer on epgsql and pooler |
+| `notifications.ex` | `LISTEN` / `NOTIFY`: the supervised listening connection |
 | `identifier.ex` | checks every name that goes into SQL |
 | `transformer.ex` | turns results into maps |
 
 ## Working with an AI assistant
 
 `.claude/skills/` holds the rules the 5.0 code was written against: `erlang-otp` (processes, the pool, calling epgsql and pooler), `postgres-sql` (how Moebius builds SQL), `elixir-testing` (test isolation and style) and `supabase-postgres-best-practices`. Claude Code picks them up automatically, and they're plain Markdown, so they're worth a read either way. AI-assisted pull requests are fine; you're still the one responsible for what's in them, so please read and test your change before you send it.
+
+## Ways to help
+
+You don't need to write code to help:
+
+- **Try the docs.** If an example in the README or on HexDocs doesn't work as written, that's a bug. Tell us, or fix it.
+- **Answer an issue.** Reproducing someone's problem, or narrowing it down to a smaller query, is a big help.
+- **Pick something from the backlog.** The end of `PROJECT.md` lists known limits, roughly in order of usefulness. Open an issue first if you plan a large change, so nobody does the work twice.
 
 ## Reporting bugs
 
@@ -63,7 +73,7 @@ For security problems, please don't open a public issue. See [SECURITY.md](SECUR
 
 ## Code of conduct
 
-Be kind. Everyone here is volunteering their time. See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Everyone here is volunteering their time, so be kind. The [code of conduct](CODE_OF_CONDUCT.md) says what we expect and how to report a problem privately.
 
 ## License
 

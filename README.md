@@ -27,6 +27,7 @@ Moebius is *not* an ORM. There are no schemas, no mappings and no migrations; on
 - [Documents (JSONB)](#documents-jsonb)
 - [SQL files and functions](#sql-files-and-functions)
 - [Bulk loading](#bulk-loading), [streaming](#streaming-large-results), [transactions](#transactions), [EXPLAIN](#asking-postgres-how-it-will-run-a-query)
+- [Real-time events (LISTEN / NOTIFY)](#real-time-events-listen--notify)
 - [Types](#types), [errors](#errors) and [safety](#safety)
 - [Contributing](#contributing)
 
@@ -829,6 +830,8 @@ mix quality
 ```
 
 The repo includes [Claude Code](https://claude.com/claude-code) skills in `.claude/skills/` (`erlang-otp`, `postgres-sql`, `elixir-testing` and `supabase-postgres-best-practices`). They're the rules the 5.0 code was held to, and they're a good read even if you don't use an AI assistant.
+
+Everyone taking part is expected to follow the [code of conduct](CODE_OF_CONDUCT.md).
 
 Found a security problem? Please report it privately; see [SECURITY.md](SECURITY.md).
 

@@ -15,6 +15,6 @@ Include the smallest code that shows the problem and what an attacker could do w
 
 ## What counts
 
-Moebius builds SQL, so SQL injection is the big one. Every value is meant to be sent as a parameter and every table, column and function name is meant to pass `Moebius.Identifier`. If you can get anything into the SQL text some other way, that's a vulnerability and we want to hear about it.
+Moebius builds SQL, so SQL injection is the big one. Every value is meant to be sent as a parameter and every table, column and function name is meant to pass `Moebius.Identifier`. `LISTEN` channel names are quoted and checked by `Moebius.Notifications`, and `notify/2` sends both channel and payload as parameters. If you can get anything into the SQL text some other way, that's a vulnerability and we want to hear about it.
 
 SQL you write yourself (`filter("price > $1", 10)`, `run("select ...")`, SQL files) is used exactly as written, by design. Interpolating user input into those strings is unsafe, the same as it would be with any driver.
