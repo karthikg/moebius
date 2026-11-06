@@ -67,4 +67,20 @@ defmodule Moebius.StreamTest do
 
     assert %{in_use_count: 0} = TestDb.pool_status()
   end
+
+  test "halting early inside a caller's transaction closes the cursor and keeps the transaction" do
+    result =
+      TestDb.transaction(fn tx ->
+        assert [%{id: 1}, %{id: 2}] =
+                 db(:readings) |> sort(:id) |> TestDb.stream(chunk: 2) |> Enum.take(2)
+
+        # the cursor is closed, so the same connection can run more work in the transaction
+        {:ok, _} = TestDb.run("insert into readings values (9998, 1)", tx)
+        :done
+      end)
+
+    assert result == :done
+    assert {:ok, [%{id: 9998}]} = db(:readings) |> filter(id: 9998) |> TestDb.run()
+    assert %{in_use_count: 0} = TestDb.pool_status()
+  end
 end

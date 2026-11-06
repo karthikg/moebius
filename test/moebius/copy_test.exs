@@ -175,4 +175,33 @@ defmodule Moebius.CopyTest do
       assert count() == 0
     end
   end
+
+  describe "inside a transaction" do
+    test "a failed copy rolls the transaction back and frees the connection" do
+      assert {:error, "duplicate key value violates unique constraint \"shipments_pkey\""} =
+               TestDb.transaction(fn _tx ->
+                 {:ok, 1} = TestDb.copy(:shipments, [shipment(100)])
+                 TestDb.copy(:shipments, [shipment(1), shipment(1)])
+               end)
+
+      assert count() == 0
+      assert %{in_use_count: 0} = TestDb.pool_status()
+      assert {:ok, 1} = TestDb.copy(:shipments, [shipment(1)])
+    end
+  end
+
+  test "a non-positive :chunk raises" do
+    for bad <- [0, -1, :big] do
+      assert_raise ArgumentError, ~r/:chunk/, fn ->
+        TestDb.copy(:shipments, [shipment(1)], chunk: bad)
+      end
+    end
+  end
+
+  test "a failed copy leaves nothing in the caller's mailbox" do
+    rows = Enum.map(1..3_000, &shipment/1) ++ [shipment(1)]
+
+    assert {:error, _} = TestDb.copy(:shipments, rows, chunk: 3_001)
+    refute_received {:epgsql, _, _}
+  end
 end

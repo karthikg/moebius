@@ -54,6 +54,7 @@
     "Moebius.Error"
   ],
   "lib/moebius/pool.ex": [
+    "Logger",
     "Moebius."
   ],
   "lib/moebius/query.ex": [

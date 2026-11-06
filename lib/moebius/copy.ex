@@ -33,6 +33,9 @@ defmodule Moebius.Copy do
     table = Identifier.name!(table)
     chunk = Keyword.get(opts, :chunk, @chunk)
 
+    unless is_integer(chunk) and chunk > 0,
+      do: raise(ArgumentError, ":chunk must be a positive integer, got: #{inspect(chunk)}")
+
     Pool.checkout(pool, fn %Connection{pid: pid} ->
       try do
         rows
@@ -44,6 +47,10 @@ defmodule Moebius.Copy do
         # in copy mode, so it can't go back to the pool for the next caller.
         if Process.delete({__MODULE__, :copying, pid}),
           do: Process.put({Connection, :broken, pid}, true)
+
+        # a rejection that arrived after we stopped looking would sit in the caller's
+        # mailbox forever
+        server_error(pid)
       end
     end)
     |> raise_in_transaction(pool)
@@ -99,10 +106,15 @@ defmodule Moebius.Copy do
 
     case :epgsql.copy_done(pid) do
       {:ok, count} -> {:ok, count}
-      {:error, error} -> {:error, Error.from_epgsql(error)}
+      {:error, error} -> {:error, server_error(pid) || Error.from_epgsql(error)}
     end
   catch
-    :exit, reason -> {:error, Connection.lost(pid, reason)}
+    # The server can reject a row and end the COPY while copy_done is on its way; epgsql then
+    # crashes on copy_done. The connection is gone either way (lost/2 marks it), but the
+    # server's message, sent to us before the crash, says what actually went wrong.
+    :exit, reason ->
+      lost = Connection.lost(pid, reason)
+      {:error, server_error(pid) || lost}
   end
 
   # A COPY that stopped part way leaves the connection in copy mode. Don't reuse it.

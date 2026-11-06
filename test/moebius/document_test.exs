@@ -8,7 +8,7 @@ defmodule Moebius.DocumentTest do
   end
 
   setup do
-    TestDb.run("delete from user_docs;")
+    {:ok, []} = TestDb.run("truncate user_docs restart identity")
     TestDb.run("drop table if exists monkies;")
     TestDb.run("drop table if exists artists;")
 
@@ -360,6 +360,29 @@ defmodule Moebius.DocumentTest do
                db(:user_docs) |> contains(email: steve.email) |> delete() |> TestDb.run()
 
       assert {:ok, []} = db(:user_docs) |> TestDb.run()
+    end
+  end
+
+  describe "predicates and search/2" do
+    test "a predicate after search raises instead of building broken SQL" do
+      for add <- [
+            &contains(&1, email: "x@test.com"),
+            &filter(&1, "body ->> 'name' = $1", "x"),
+            &filter(&1, :name, "=", "x"),
+            &exists(&1, :pets, "rex")
+          ] do
+        assert_raise ArgumentError, ~r/must come before search/, fn ->
+          db(:monkies) |> search("duck") |> add.()
+        end
+      end
+    end
+
+    test "a predicate before search combines with it" do
+      assert {:ok, [%{name: "Chicken Wings"}]} =
+               db(:monkies) |> contains(sku: "stuff") |> search("duck") |> TestDb.run()
+
+      assert {:ok, []} =
+               db(:monkies) |> contains(sku: "other") |> search("duck") |> TestDb.run()
     end
   end
 end

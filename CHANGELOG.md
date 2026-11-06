@@ -17,6 +17,17 @@
 
 ### Fixed
 
+- `Moebius.Query.search/2` followed by `select/2` with explicit columns no longer fails with
+  `column "rank" does not exist`. The ranking is ordered by its expression, not the alias.
+- `copy/3`: when the server rejects a row while the last chunk is still being sent, the error
+  returned is the server's (e.g. the duplicate key) instead of "connection lost", and its
+  message no longer stays behind in the caller's mailbox. `:chunk` is validated.
+- `rollback/1` outside a transaction raises `ArgumentError` instead of an uncaught throw.
+- Document predicates (`contains/2`, `filter/3,4`, `exists/3`) after `search/2` raise
+  `ArgumentError`, because they replace the search's condition and parameter. Put them before
+  `search/2`, where they combine with it.
+- An unknown connection option (say, `statment_timeout`) logs a warning naming it, instead
+  of being ignored silently.
 - `search/2` on both `Moebius.Query` and `Moebius.DocumentQuery` no longer builds its SQL
   eagerly, so `sort`, `limit` and `offset` piped after it are honored (#98, #99). The select
   list it needs lives in the new `select` field of `%QueryCommand{}`, and `select/1` uses it.
